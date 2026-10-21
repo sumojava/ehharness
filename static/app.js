@@ -27,13 +27,41 @@ function renderProvider(id, info) {
   save.type = "submit";
   save.textContent = "Save key";
 
+  const test = document.createElement("button");
+  test.type = "button";
+  test.className = "secondary";
+  test.textContent = "Test connection";
+  test.disabled = !info.saved;
+
   const remove = document.createElement("button");
   remove.type = "button";
   remove.className = "secondary";
   remove.textContent = "Remove";
   remove.disabled = !info.saved;
 
-  form.append(input, save, remove);
+  const result = document.createElement("p");
+  result.className = "status";
+
+  form.append(input, save, test, remove);
+
+  test.addEventListener("click", async () => {
+    test.disabled = true;
+    result.textContent = "Testing...";
+    result.className = "status";
+    try {
+      const res = await fetch("/api/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: id }),
+      });
+      const data = await res.json();
+      setStatus(result, data.message, data.ok);
+    } catch {
+      setStatus(result, "Test failed. Is the server running?", false);
+    } finally {
+      test.disabled = false;
+    }
+  });
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -48,6 +76,7 @@ function renderProvider(id, info) {
     if (res.ok) {
       setStatus(status, "Key saved", true);
       remove.disabled = false;
+      test.disabled = false;
     } else {
       setStatus(status, data.error || "Could not save", false);
     }
@@ -65,7 +94,7 @@ function renderProvider(id, info) {
     }
   });
 
-  card.append(title, status, form);
+  card.append(title, status, form, result);
   container.append(card);
 }
 

@@ -7,6 +7,8 @@ key value back to the browser: the UI only sees "saved" or "not saved".
 """
 import json
 import os
+import urllib.error
+import urllib.request
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -29,6 +31,40 @@ PROVIDERS = {
 
 def get_key(alias):
     return keyring.get_password(SERVICE, alias)
+
+
+# A cheap, read-only call per provider: list available models. It costs nothing
+# meaningful and confirms the key works. The key goes in a header, never the URL,
+# so it can't end up in proxy or server logs.
+TEST_REQUESTS = {
+    "anthropic": (
+        "https://api.anthropic.com/v1/models",
+        lambda key: {"x-api-key": key, "anthropic-version": "2023-06-01"},
+    ),
+    "openai": (
+        "https://api.openai.com/v1/models",
+        lambda key: {"Authorization": f"Bearer {key}"},
+    ),
+    "gemini": (
+        "https://generativelanguage.googleapis.com/v1beta/models",
+        lambda key: {"x-goog-api-key": key},
+    ),
+}
+
+
+def test_provider(provider_id, key):
+    """Return (ok, message). Never includes the key in the message."""
+    url, make_headers = TEST_REQUESTS[provider_id]
+    req = urllib.request.Request(url, headers=make_headers(key), method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return True, "Working"
+    except urllib.error.HTTPError as err:
+        if err.code in (401, 403):
+            return False, "Key was rejected. Check that it's the right key for this provider."
+        return False, f"Provider returned an error (HTTP {err.code})."
+    except (urllib.error.URLError, TimeoutError):
+        return False, "Could not reach the provider. Check your internet connection."
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -106,6 +142,13 @@ class Handler(BaseHTTPRequestHandler):
             except keyring.errors.PasswordDeleteError:
                 pass
             return self._send_json(200, {"saved": False})
+
+        if self.path == "/api/test":
+            key = get_key(provider["alias"])
+            if key is None:
+                return self._send_json(200, {"ok": False, "message": "No key saved yet."})
+            ok, message = test_provider(body.get("provider"), key)
+            return self._send_json(200, {"ok": ok, "message": message})
 
         self._send_json(404, {"error": "not found"})
 
