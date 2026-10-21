@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Harness chat</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main>
+    <div class="row">
+      <h1>Chat with Claude</h1>
+      <a href="/">Settings</a>
+    </div>
+    <div class="row controls">
+      <label>Model
+        <select id="model"></select>
+      </label>
+      <button id="clear" class="secondary" type="button">New chat</button>
+    </div>
+    <div class="chat">
+      <div id="log" class="log" aria-live="polite"></div>
+      <form id="composer" class="composer">
+        <textarea id="input" placeholder="Type a message. Enter sends, Shift+Enter adds a line." maxlength="20000"></textarea>
+        <button id="send" type="submit">Send</button>
+      </form>
+    </div>
+    <p class="intro">This chat is kept only in this browser tab. Closing the tab or clicking New chat clears it.</p>
+  </main>
+  <script src="/chat.js"></script>
+</body>
+</html>

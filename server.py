@@ -52,6 +52,77 @@ TEST_REQUESTS = {
 }
 
 
+# Chat models the harness will send to. Only these IDs are allowed, so a
+# request can't point the app at an arbitrary model string.
+CLAUDE_MODELS = ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"]
+MAX_MESSAGES = 50
+MAX_MESSAGE_CHARS = 20_000
+MAX_REPLY_TOKENS = 2048
+
+
+def validate_chat(body):
+    """Return (model, messages) or raise ValueError with a safe message."""
+    model = body.get("model")
+    if model not in CLAUDE_MODELS:
+        raise ValueError("unknown model")
+    raw = body.get("messages")
+    if not isinstance(raw, list) or not raw or len(raw) > MAX_MESSAGES:
+        raise ValueError("send between 1 and 50 messages")
+    messages = []
+    for m in raw:
+        role = m.get("role") if isinstance(m, dict) else None
+        content = m.get("content") if isinstance(m, dict) else None
+        if role not in ("user", "assistant") or not isinstance(content, str):
+            raise ValueError("each message needs a role and text")
+        if not content.strip() or len(content) > MAX_MESSAGE_CHARS:
+            raise ValueError("message is empty or too long")
+        messages.append({"role": role, "content": content})
+    if messages[-1]["role"] != "user":
+        raise ValueError("the last message must be from you")
+    return model, messages
+
+
+def call_claude(key, model, messages):
+    """Send a chat request to Anthropic. Returns dict with text and usage."""
+    payload = json.dumps(
+        {"model": model, "max_tokens": MAX_REPLY_TOKENS, "messages": messages}
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages",
+        data=payload,
+        headers={
+            "x-api-key": key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            data = json.loads(resp.read())
+    except urllib.error.HTTPError as err:
+        if err.code in (401, 403):
+            raise RuntimeError("Claude rejected the key. Test it on the settings page.")
+        if err.code == 429:
+            raise RuntimeError("Claude rate limit reached. Try again shortly.")
+        raise RuntimeError(f"Claude returned an error (HTTP {err.code}).")
+    except (urllib.error.URLError, TimeoutError):
+        raise RuntimeError("Could not reach Claude. Check your connection.")
+
+    text = "".join(
+        block.get("text", "") for block in data.get("content", []) if block.get("type") == "text"
+    )
+    usage = data.get("usage", {})
+    return {
+        "text": text,
+        "usage": {
+            "input_tokens": usage.get("input_tokens", 0),
+            "output_tokens": usage.get("output_tokens", 0),
+        },
+        "model": model,
+    }
+
+
 def test_provider(provider_id, key):
     """Return (ok, message). Never includes the key in the message."""
     url, make_headers = TEST_REQUESTS[provider_id]
@@ -109,6 +180,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_file(STATIC_DIR / "index.html", "text/html; charset=utf-8")
         if self.path == "/app.js":
             return self._send_file(STATIC_DIR / "app.js", "application/javascript")
+        if self.path == "/chat":
+            return self._send_file(STATIC_DIR / "chat.html", "text/html; charset=utf-8")
+        if self.path == "/style.css":
+            return self._send_file(STATIC_DIR / "style.css", "text/css; charset=utf-8")
+        if self.path == "/chat.js":
+            return self._send_file(STATIC_DIR / "chat.js", "application/javascript")
+        if self.path == "/api/models":
+            return self._send_json(200, {"claude": CLAUDE_MODELS})
         if self.path == "/api/providers":
             status = {
                 pid: {"label": p["label"], "saved": get_key(p["alias"]) is not None}
@@ -142,6 +221,21 @@ class Handler(BaseHTTPRequestHandler):
             except keyring.errors.PasswordDeleteError:
                 pass
             return self._send_json(200, {"saved": False})
+
+        if self.path == "/api/chat":
+            if body.get("provider") != "anthropic":
+                return self._send_json(400, {"error": "chat is only set up for Claude right now"})
+            key = get_key(provider["alias"])
+            if key is None:
+                return self._send_json(400, {"error": "Save a Claude key on the settings page first."})
+            try:
+                model, messages = validate_chat(body)
+                result = call_claude(key, model, messages)
+            except ValueError as err:
+                return self._send_json(400, {"error": str(err)})
+            except RuntimeError as err:
+                return self._send_json(502, {"error": str(err)})
+            return self._send_json(200, result)
 
         if self.path == "/api/test":
             key = get_key(provider["alias"])

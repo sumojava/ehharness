@@ -63,3 +63,40 @@ button:disabled { opacity: 0.4; cursor: default; }
 .status { margin: 0 0 10px; color: var(--muted); }
 .status.ok { color: var(--ok); }
 .status.error { color: var(--err); }
+
+/* Chat page */
+a { color: var(--accent); }
+.row { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.row.controls { margin: 8px 0 12px; }
+select {
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+}
+.chat { display: flex; flex-direction: column; height: calc(100vh - 170px); min-height: 360px; }
+.log {
+  flex: 1;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--card);
+}
+.msg { margin: 0 0 12px; white-space: pre-wrap; word-wrap: break-word; }
+.msg .who { display: block; font-size: 13px; color: var(--muted); margin-bottom: 2px; }
+.usage { font-size: 13px; color: var(--muted); margin: 6px 0 0; }
+.composer { display: flex; gap: 8px; margin-top: 10px; }
+.composer textarea {
+  flex: 1;
+  min-height: 60px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  resize: vertical;
+}
